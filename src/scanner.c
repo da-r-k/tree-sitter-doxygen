@@ -1,4 +1,5 @@
 #include <stdbool.h>
+#include "tree_sitter/alloc.h"
 #include "tree_sitter/parser.h"
 
 // Inline replacements for libc functions unavailable in Zed's WASM sandbox
