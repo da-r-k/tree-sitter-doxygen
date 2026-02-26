@@ -1,8 +1,18 @@
-#include <ctype.h>
-#include <stdlib.h>
-#include <wctype.h>
-
+#include <stdbool.h>
 #include "tree_sitter/parser.h"
+
+// Inline replacements for libc functions unavailable in Zed's WASM sandbox
+static inline bool is_alpha(int32_t c) {
+    return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+}
+
+static inline bool is_alnum(int32_t c) {
+    return is_alpha(c) || (c >= '0' && c <= '9');
+}
+
+static inline bool is_wspace(int32_t c) {
+    return c == ' ' || c == '\t' || c == '\n' || c == '\r' || c == '\f' || c == '\v';
+}
 
 enum TokenType {
     BRIEF_TEXT,
@@ -39,8 +49,6 @@ void tree_sitter_doxygen_external_scanner_deserialize(void *payload, const char 
     if (length == 2) {
         scanner->codeblock_delimiter_length = (uint32_t)buffer[0];
         scanner->codeblock_start_column = (uint32_t)buffer[1];
-    } else if (length != 0 && length != 2) {
-        abort();
     }
 }
 
@@ -51,7 +59,7 @@ bool tree_sitter_doxygen_external_scanner_scan(void *payload, TSLexer *lexer, co
         uint32_t column_start = 0;
         bool advanced_once = false;
 
-        while ((iswspace(lexer->lookahead) || lexer->lookahead == '*') && lexer->lookahead != '\n' &&
+        while ((is_wspace(lexer->lookahead) || lexer->lookahead == '*') && lexer->lookahead != '\n' &&
                !lexer->eof(lexer)) {
             skip(lexer);
         }
@@ -86,7 +94,7 @@ bool tree_sitter_doxygen_external_scanner_scan(void *payload, TSLexer *lexer, co
 
         // go past space, / and * to check next text's column
         while (lexer->lookahead != '\n' && !lexer->eof(lexer) &&
-               (iswspace(lexer->lookahead) || lexer->lookahead == '/' || lexer->lookahead == '*')) {
+               (is_wspace(lexer->lookahead) || lexer->lookahead == '/' || lexer->lookahead == '*')) {
             advance(lexer);
         }
 
@@ -101,7 +109,7 @@ bool tree_sitter_doxygen_external_scanner_scan(void *payload, TSLexer *lexer, co
     }
 
     if (valid_symbols[CODE_BLOCK_START]) {
-        while (iswspace(lexer->lookahead) && !lexer->eof(lexer)) {
+        while (is_wspace(lexer->lookahead) && !lexer->eof(lexer)) {
             skip(lexer);
         }
 
@@ -118,7 +126,7 @@ bool tree_sitter_doxygen_external_scanner_scan(void *payload, TSLexer *lexer, co
                 advance(lexer);
                 scanner->codeblock_delimiter_length++;
             }
-            if (isalpha(lexer->lookahead)) {
+            if (is_alpha(lexer->lookahead)) {
                 lexer->mark_end(lexer);
                 lexer->result_symbol = CODE_BLOCK_START;
                 return true;
@@ -128,14 +136,14 @@ bool tree_sitter_doxygen_external_scanner_scan(void *payload, TSLexer *lexer, co
         return false;
     }
 
-    if (valid_symbols[CODE_BLOCK_LANGUAGE] && isalnum(lexer->lookahead)) {
-        while (isalnum(lexer->lookahead)) {
+    if (valid_symbols[CODE_BLOCK_LANGUAGE] && is_alnum(lexer->lookahead)) {
+        while (is_alnum(lexer->lookahead)) {
             advance(lexer);
         }
 
         lexer->mark_end(lexer);
 
-        while (iswspace(lexer->lookahead) && lexer->lookahead != '\n') {
+        while (is_wspace(lexer->lookahead) && lexer->lookahead != '\n') {
             advance(lexer);
         }
 
@@ -150,7 +158,7 @@ bool tree_sitter_doxygen_external_scanner_scan(void *payload, TSLexer *lexer, co
         }
 
         // skip ws and newline before block
-        while (iswspace(lexer->lookahead)) {
+        while (is_wspace(lexer->lookahead)) {
             skip(lexer);
             if (lexer->lookahead == '\n') {
                 break;
@@ -224,11 +232,11 @@ bool tree_sitter_doxygen_external_scanner_scan(void *payload, TSLexer *lexer, co
 }
 
 void *tree_sitter_doxygen_external_scanner_create() {
-    Scanner *scanner = (Scanner *)calloc(1, sizeof(Scanner));
+    Scanner *scanner = (Scanner *)ts_calloc(1, sizeof(Scanner));
     return scanner;
 }
 
 void tree_sitter_doxygen_external_scanner_destroy(void *payload) {
     Scanner *scanner = (Scanner *)payload;
-    free(scanner);
+    ts_free(scanner);
 }
